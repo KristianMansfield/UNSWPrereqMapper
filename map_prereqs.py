@@ -95,7 +95,8 @@ class Course:
     # NONE
 
     # Dunders
-    def __init__(self, code, name, prerequisites=None,
+    # TODO Make arguments a dict
+    def __init__(self, name, code, prerequisites=None,
                  corequisites=None, exclusions=None):
         self.code = code
         self.name = name
@@ -103,47 +104,54 @@ class Course:
         self.corequesites = []
         self.exclusions = []
 
-        for course in prerequisites:
-            self.add_prereq(course)
+        if prerequisites:
+            for course in prerequisites:
+                self.add_prereq(course)
 
-        for course in corequisites:
-            self.add_coreq(course)
+        if corequisites:
+            for course in corequisites:
+                self.add_coreq(course)
 
-        for course in exclusions:
-            self.add_exclusion(course)
+        if exclusions:
+            for course in exclusions:
+                self.add_exclusion(course)
+
+    def __str__(self):
+        return f"Course \"{self.name}\" with course code {self.code}"
 
     # Public methods
     def add_prereq(self, course):
         """Add a course as a prerequisite to this course."""
 
         if course in self.prerequisites:
-            logger.warning("Course {course.code} is already a prerequisite \
-                           for {self.name}.")
+            logger.warning("Course %s is already a prerequisite for %s.",
+                           course.code, self.name)
         else:
             self.prerequisites.append(course)
-            logger.info("Added {course.code} as a prerequisite for \
-                        {self.name}.")
+            logger.info("Added %s as a prerequisite for %s.", course.code,
+                        self.name)
 
     def add_coreq(self, course):
         """Add a course as a corequisite to this course."""
 
         if course in self.corequesites:
-            logger.warning("Course {course.code} is already a corequisite for \
-                            {self.name}.")
+            logger.warning("Course %s is already a corequisite for %s.",
+                           course.code, self.name)
         else:
             self.corequesites.append(course)
-            logger.info("Added {course.code} as a corequisite for \
-                        {self.name}.")
+            logger.info("Added %s as a corequisite for %s.", course.code,
+                        self.name)
 
     def add_exclusion(self, course):
         """Add a course as an exclusion to this course."""
 
         if course in self.exclusions:
-            logger.warning("Course {course.code} is already an exclusion for \
-                           {self.name}.")
+            logger.warning("Course %s is already an exclusion for %s.",
+                           course.code, self.name)
         else:
             self.exclusions.append(course)
-            logger.info("Added {course.code} as an exclusion for {self.name}.")
+            logger.info("Added %s as an exclusion for %s.", course.code,
+                        self.name)
 
     # Private methods
 
@@ -158,7 +166,7 @@ class Program:
     Attributes:
         name (str):
             The name of the enrolment program
-        code (int):
+        code (str):
             The UNSW program code as found on the handbook
         courses ():
             The core courses of which this program is comprised. This
@@ -169,23 +177,33 @@ class Program:
     # NONE
 
     # Dunders
-    def __init__(self, name: str, code: int, courses: list = None):
+    def __init__(self, name: str, code: str, courses: list = None):
         self.name = name
         self.code = code
         self.courses = []
-        for c in courses:
-            self.add_course(c)
+
+        if courses:
+            for c in courses:
+                self.add_course(c)
+
+    def __str__(self):
+        out_str = f"Program \"{self.name}\" \nwith course code " \
+            + f"{self.code} \nhas the following courses:"
+
+        course_string = "\n\t".join(x.code for x in self.courses)
+
+        return f"{out_str}\n\t{course_string}"
 
     # Public methods
     def add_course(self, course: Course):
         """Add a course to the program."""
 
         if course in self.courses:
-            logger.warning("Course {course.code} is already in program \
-                           {self.name}.")
+            logger.warning("Course %s is already in program %s.",
+                           course.code, self.name)
         else:
             self.courses.append(course)
-            logger.info("Added {course.code} to {self.name}.")
+            logger.info("Added %s to %s.", course.code, self.name)
 
     # Private methods
 
@@ -201,34 +219,66 @@ class Program:
 ####################
 # Public functions #
 ####################
+def make_request(url):
+    """Make a request to the given URL and return the HTML content."""
+
+    # TODO
+
+
+def get_courses(content):
+    """Get the list of courses out of the given content."""
+
+    # TODO
+
+
+def get_all_data(content):
+    """Get the important data out of the given content."""
+
+    # TODO
 
 
 #####################
 # Private functions #
 #####################
+def _get_prerequisites(content):
+    """Get prerequisite data out of given HTML content"""
+
+    # TODO
 
 
 ###############################################################################
 # Main                                                                        #
 ###############################################################################
-def main():
+def main(parsed_args):
     """Main function for python module"""
+
     # -----------------
     # Declare variables
     # -----------------
+    timetable_link = ''.join(["https://timetable.unsw.edu.au/",
+                              parsed_args.year,
+                              "/",
+                              parsed_args.school,
+                              parsed_args.campus,
+                              ".html"
+                              ])
+    # https://www.handbook.unsw.edu.au/undergraduate/courses/2025/COMP6441
 
     # -----------------
     # Setup
     # -----------------
-    logging.basicConfig(filename='prereq_map.log', encoding='utf-8',
-                        level=logging.DEBUG)
 
     # -----------------
     # Run :)
     # -----------------
+    course1 = Course("Intro Course", "101")
+    course2 = Course("Intro Course", "102", prerequisites=[course1])
+    program_a = Program("BestProgram", "001", courses=[course1, course2])
 
-    # Return
-    return
+    print(course1)
+    print(course2)
+    print(program_a)
+    print(timetable_link)
 
 
 ###############################################################################
@@ -238,10 +288,44 @@ if __name__ == "__main__":
     # Parse arguments
     logger.debug("Parsing arguments.")
     parser = argparse.ArgumentParser()
-    parser.parse_args()
-    logger.debug("Arguments parsed.")
+    parser.add_argument("-s", "--school", nargs=1, default="COMP",
+                        help="The school to scrape.")
+    parser.add_argument("-y", "--year", nargs=1, default="2025",
+                        help="The year to scrape.")
+    parser.add_argument("-c", "--campus", nargs=1, default="KENS",
+                        help="The campus to scrape.")
+    parser.add_argument("-l", "--logfile", nargs=1, default="prereq_map.log",
+                        help="The logfile location")
+    parser.add_argument("-v", "--log-verbosity", nargs=1, default=1, type=int,
+                        choices=[0, 1, 2, 3],
+                        help="The depth to which we are logging. \n\t0 = \
+                            DEBUG\n\t1 = INFO\n\t2 = WARNING\n\t3 = ERROR")
+    args = parser.parse_args()   # Parse the arguments here
 
-    # Perform setup
+    # Set debug level correctly
+    if args.log_verbosity == 0:
+        LOG_LEVEL = logging.DEBUG
+    elif args.log_verbosity == 1:
+        LOG_LEVEL = logging.INFO
+    elif args.log_verbosity == 2:
+        LOG_LEVEL = logging.WARNING
+    elif args.log_verbosity == 3:
+        LOG_LEVEL = logging.ERROR
+    else:
+        logging.basicConfig(filename=args.logfile, encoding='utf-8',
+                            level=logging.DEBUG)
+        logger.warning("Invalid argument given to --log-verbosity."
+                       + "Resetting to default.")
+        LOG_LEVEL = logging.INFO
+
+    logging.basicConfig(filename=args.logfile, encoding='utf-8',
+                        level=LOG_LEVEL)
+
+    logger.info("Arguments parsed.")
+    logger.info("Using logfile: %s", args.logfile)
+    logger.info("Starting main")
 
     # Run main
-    main()
+    main(args)
+
+    logger.debug("Main terminated.")
