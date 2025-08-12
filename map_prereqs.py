@@ -300,6 +300,8 @@ if __name__ == "__main__":
                         choices=[0, 1, 2, 3],
                         help="The depth to which we are logging. \n\t0 = \
                             DEBUG\n\t1 = INFO\n\t2 = WARNING\n\t3 = ERROR")
+    # parser.add_argument - save HTML responses
+    # parser.add_argument - online vs local storage
     args = parser.parse_args()   # Parse the arguments here
 
     # Set debug level correctly
