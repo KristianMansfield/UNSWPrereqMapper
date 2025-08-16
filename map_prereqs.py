@@ -44,7 +44,11 @@ Typical usage example:
 ###############################################################################
 import argparse
 import logging
+import requests
+import os
+from bs4 import BeautifulSoup
 from utils.setup_logger import logger
+from urllib.parse import urlparse
 
 
 ###############################################################################
@@ -219,16 +223,93 @@ class Program:
 ####################
 # Public functions #
 ####################
-def make_request(url):
+def query_url(url, use_cache=True):
+    """Get HTML content for a url from internet or local storage."""
+
+    if use_cache:
+        # Check if there is a cache
+        try:
+            return open_contents(url)
+        except FileNotFoundError:
+            logger.info("No cached file for url %s", url)
+            return make_request(url)
+
+
+def make_request(url, save_response=True):
     """Make a request to the given URL and return the HTML content."""
 
-    # TODO
+    logger.info("Making request for %s", url)
+    try:
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        logger.error("URL %s returned a status code of %d.",
+                     e.request.url, e.response.status_code)
+
+    if save_response:
+        logger.info("Saving HTML response for url %s.", url)
+        save_contents(url, resp.text)
+
+    return resp.text
+
+
+def open_contents(url):
+    """Open the file that maps to the given url and return the
+    contents."""
+
+    logger.info("Searching for cached response for %s.", url)
+
+    domain = urlparse(url)
+    file_location = "sites/" + domain.netloc + "/" + domain.path + ".html"
+
+    try:
+        with open(file_location, 'r', encoding='utf-8') as f:
+            logger.info("Content found. Returning.")
+            html_content = f.read()
+            return html_content
+    except FileNotFoundError as exc:
+        logger.error("File not found for url %s.", url)
+        raise FileNotFoundError from exc
+
+
+def save_contents(url, html_content):   # TODO
+    """Save the given HTML content to a file in a structured manner."""
+
+    domain = urlparse(url)
+    save_location = "sites/" + domain.netloc + "/" + domain.path + ".html"
+
+    # Make sure the path for this file exists
+    os.makedirs(os.path.dirname(save_location), exist_ok=True)
+
+    with open(save_location, 'w', encoding='utf-8') as f:
+        logger.info("Saving content for url %s to disk.", url)
+        f.write(html_content)
 
 
 def get_courses(content):
     """Get the list of courses out of the given content."""
 
-    # TODO
+    # ug_courses = []
+    # pg_courses = []
+    courses = []
+
+    soup = BeautifulSoup(content, "html.parser")
+    table_headers = soup.find_all("td", class_="classSearchSectionHeading")
+
+    for th in table_headers:
+        course_entries = th.parent.parent.find("table").find_all("tr")
+
+        # Remove the first entry as this is a header row
+        course_entries.pop(0)
+
+        for c in course_entries:
+            # Skip row spacers
+            if c.find("td", class_="rowSpacer"):
+                continue
+
+            courses.append(c.find_all("td")[0].text)
+
+    return courses
 
 
 def get_all_data(content):
@@ -271,14 +352,17 @@ def main(parsed_args):
     # -----------------
     # Run :)
     # -----------------
-    course1 = Course("Intro Course", "101")
-    course2 = Course("Intro Course", "102", prerequisites=[course1])
-    program_a = Program("BestProgram", "001", courses=[course1, course2])
+    if not parsed_args.offline:
+        timetable_content = query_url(timetable_link)
+        courses_listed = get_courses(timetable_content)
+        print(len(courses_listed))
+        print(courses_listed)
 
-    print(course1)
-    print(course2)
-    print(program_a)
-    print(timetable_link)
+    else:
+        term_string = "Offline mode is not yet supported for this script."
+        print(term_string)
+        logger.error(term_string)
+        exit()
 
 
 ###############################################################################
@@ -295,7 +379,12 @@ if __name__ == "__main__":
     parser.add_argument("-c", "--campus", nargs=1, default="KENS",
                         help="The campus to scrape.")
     parser.add_argument("-l", "--logfile", nargs=1, default="prereq_map.log",
-                        help="The logfile location")
+                        help="The logfile location.")
+    parser.add_argument("--use-cache", nargs=1, default=True,
+                        help="Default to local storage if it exists.")
+    parser.add_argument("--offline", nargs=1, default=False,
+                        help="If this option is set, use only locally stored \
+                            HTML responses.")
     parser.add_argument("-v", "--log-verbosity", nargs=1, default=1, type=int,
                         choices=[0, 1, 2, 3],
                         help="The depth to which we are logging. \n\t0 = \

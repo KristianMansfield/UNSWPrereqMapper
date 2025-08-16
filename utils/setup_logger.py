@@ -27,10 +27,7 @@
 ###############################################################################
 """Create a logger to be used by multiple files.
 
-Leave one blank line.  The rest of this docstring should contain an
-overall description of the module or program.  Optionally, it may also
-contain a brief description of exported classes and functions and/or
-usage examples.
+TODO Write more docstring to really explain this file.
 
 Typical usage example:
     from setup_logger import logger
