@@ -307,7 +307,10 @@ def get_courses(content):
             if c.find("td", class_="rowSpacer"):
                 continue
 
-            courses.append(c.find_all("td")[0].text)
+            course_code = c.find_all("td")[0].text
+
+            if course_code not in courses:
+                courses.append(course_code)
 
     return courses
 
