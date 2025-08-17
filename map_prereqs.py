@@ -30,34 +30,41 @@
 """Map out the prerequisite chains for courses at UNSW Sydney.
 
 This program pulls from the UNSW Sydney handbook found at
-www.handbook.unsw.edu.au along with timetable.unsw.edu.au to get the
-courses being offered in a given year and maps them together by their
-prerequisite chains. A visualiser is to come.
+https://www.handbook.unsw.edu.au along with timetable.unsw.edu.au to get
+the courses being offered in a given year and maps them together by
+their prerequisite chains. A visualiser is to come.
+
+This script should have several stages, with each run independently:
+1. Query network and store information.
+    Gather information from the urls and store the html to disk.
+2. Build a model built on classes.
+    Open the stored information from disk and build the relevant class
+    structures. Store these classes to disk in an importable method for
+    usage later.
+3. Visualise the graph.
+    Open a graph so that one can view the prerequisite chains. This
+    should also have some visualisation differences to show corequisites
+    and exclusionary courses
 
 Typical usage example:
     pipenv run ./map_prereqs.py
-"""
 
-# Script information todo list:
-#   This script should have several stages, with each run independently:
-#   * Query network and store information
-#       Gather information from the urls and store the html to disk
-#   * Build a model built on classes
-#       Open the stored information from disk and build the relevant
-#       class structures. Store these classes to disk in an importable
-#       method for usage later
-#   * Visualise the graph
-#       Open a graph so that one can view the prerequisite chains. This
-#       Should also have some visualisation differences to show
-#       corequisites and exclusionary courses
+TODO:
+    * Write more documentation. Adhere to the PEP257 regarding using the
+    docstring as the usage output of the scripts invocation.
+    * Put the type inference on all function definitions.
+"""
 
 
 ###############################################################################
 # Imports                                                                     #
 ###############################################################################
+from __future__ import annotations
 import argparse
 import logging
 import os
+import json
+import re
 from urllib.parse import urlparse
 
 import matplotlib.pyplot as plt
@@ -74,46 +81,6 @@ from utils.setup_logger import logger
 ##################
 # Public classes #
 ##################
-class GraphVisualization:
-    """A graph visualisation class for the course prerequisite chains.
-
-    View prerequisites, corequisites, and exclusionary courses based
-    on the Course class defined elsewhere. This generates a graph for
-    visually checking prerequisites chains.
-
-    Attributes:
-        prerequisites (:obj:`list` of :obj:`Tuple[Course, Course]`):
-            The list of connected edges between courses. Entries are in
-            the form (a, b) where a is a Course that has a prerequisite
-            of Course b.
-    """
-
-    # Static class attribute definitions
-    # NONE
-
-    # Dunders
-    def __init__(self):
-        self.prerequisites = []
-
-    # Public methods
-    def addEdge(self, a, b):
-        """Appends a vertex pair to the visual list."""
-
-        temp = [a, b]
-        self.prerequisites.append(temp)
-
-    def visualize(self):
-        """Opens a visual graph of the verticies."""
-
-        G = nx.Graph()
-        G.add_edges_from(self.prerequisites)
-        nx.draw_networkx(G)
-        plt.show()
-
-    # Private methods
-    # None
-
-
 class Course:
     """A data structure to store a course.
 
@@ -122,80 +89,77 @@ class Course:
     is for the metadata about the course as a whole.
 
     Attributes:
-        name (str):
+        name:
             The name of the course as described in the handbook.
-        code (int):
+        code:
             The unique course code as identified in the handbook.
-        postgrad (bool):
+        postgrad:
             Whether or not this course is a postgraduate course.
-        corequisites (list[Course], optional):
+        corequisites:
             Courses that are prerequisites but can be taken alongside
             this course.
-        prerequisites (list[Course], optional):
+        prerequisites:
             Courses that are direct prerequisites before one can take
             this course.
-        exclusions (list[Course], optional):
+        exclusions:
             Courses that have the same content and cannot be taken in
             the same program.
-        other_prerequisites (list[str], optional):
+        other_prerequisites:
             Conditions of enrolment that are not courses.
 
-    Yet to Implement:
-        description (str, optional):
-            A description of the course as taken from the handbook.
-        uoc (int, optional):
-            The number of Units of Credit this course represents.
-        offering_faculty (str, optional):
-            The faculty offering the course.
-        offering_school (str, optional):
-            The school offering the course.
-        field_of_education (str, optional):
-            The field of education of the course as taken from the
-            handbook.
-        delivery_mode (str, optional):
-            The method of delivery for the course - usually in-person
+    TODO:
+        Add the following attributes:
+            description (str, optional):
+                A description of the course as taken from the handbook.
+            uoc (int, optional):
+                The number of Units of Credit this course represents.
+            offering_faculty (str, optional):
+                The faculty offering the course.
+            offering_school (str, optional):
+                The school offering the course.
+            field_of_education (str, optional):
+                The field of education of the course as taken from the
+                handbook.
+            delivery_mode (str, optional):
+                The method of delivery for the course - usually
+                in-person
+        Provide docstring for method listing
     """
 
     # Static class attribute definitions
     # NONE
 
     # Dunders
-    # TODO Make arguments a dict
-    def __init__(self, name, code, postgrad=False, prerequisites=None,
-                 corequisites=None, exclusions=None):
-        self.code = code
-        self.name = name
-        self.prerequisites = []
-        self.corequesites = []
-        self.exclusions = []
+    def __init__(self, name: str, code: str, postgrad: bool = False) -> None:
+        """Create a new Course for visualisation maps.
+
+        Args:
+            name (str): The name of the course.
+            code (str): The course code.
+            postgrad (bool, optional):
+                Whether this course is offered for postgrad students
+                instead of undergrad students. Defaults to False.
+        """
+
+        self.code: str = code
+        self.name: str = name
+        self.prerequisites: list[Course] = []
+        self.corequesites: list[Course] = []
+        self.exclusions: list[Course] = []
 
         if postgrad:
-            # TODO How do you get strings to adhere to the 79 char style guide?
             self.handbook_url = "https://www.handbook.unsw.edu.au/" \
                 + "postgraduate/courses/2025/" + code
         else:
             self.handbook_url = "https://www.handbook.unsw.edu.au" \
                 + "undergraduate/courses/2025/" + code
 
-        if prerequisites:
-            for course in prerequisites:
-                self.add_prereq(course)
-
-        if corequisites:
-            for course in corequisites:
-                self.add_coreq(course)
-
-        if exclusions:
-            for course in exclusions:
-                self.add_exclusion(course)
-
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Course \"{self.name}\" with course code {self.code}"
 
     # Public methods
-    def add_prereq(self, course):
+    def add_prereq(self, course: Course) -> None:
         """Add a course as a prerequisite to this course."""
-
         if course in self.prerequisites:
             logger.warning("Course %s is already a prerequisite for %s.",
                            course.code, self.name)
@@ -204,9 +168,8 @@ class Course:
             logger.info("Added %s as a prerequisite for %s.", course.code,
                         self.name)
 
-    def add_coreq(self, course):
+    def add_coreq(self, course: Course) -> None:
         """Add a course as a corequisite to this course."""
-
         if course in self.corequesites:
             logger.warning("Course %s is already a corequisite for %s.",
                            course.code, self.name)
@@ -215,9 +178,8 @@ class Course:
             logger.info("Added %s as a corequisite for %s.", course.code,
                         self.name)
 
-    def add_exclusion(self, course):
+    def add_exclusion(self, course: Course) -> None:
         """Add a course as an exclusion to this course."""
-
         if course in self.exclusions:
             logger.warning("Course %s is already an exclusion for %s.",
                            course.code, self.name)
@@ -227,58 +189,98 @@ class Course:
                         self.name)
 
     # Private methods
+    # NONE
 
 
-class Program:
-    """A data structure to store an enrolment program.
+# class Program:
+#     """A data structure to store an enrolment program.
 
-    This class stores information about an enrolment program such as
-    Computer Science and includes all the core courses one must
-    complete.
+#     This class stores information about an enrolment program such as
+#     Computer Science and includes all the core courses one must
+#     complete.
+
+#     Attributes:
+#         name (str):
+#             The name of the enrolment program
+#         code (str):
+#             The UNSW program code as found on the handbook
+#         courses ():
+#             The core courses of which this program is comprised. This
+#             is optional at initilisation.
+#     """
+
+#     # Static class attribute definitions
+#     # NONE
+
+#     # Dunders
+#     def __init__(self, name: str, code: str, courses: list = None):
+#         self.name = name
+#         self.code = code
+#         self.courses = []
+
+#         if courses:
+#             for c in courses:
+#                 self.add_course(c)
+
+#     def __str__(self):
+#         out_str = f"Program \"{self.name}\" \nwith course code " \
+#             + f"{self.code} \nhas the following courses:"
+
+#         course_string = "\n\t".join(x.code for x in self.courses)
+
+#         return f"{out_str}\n\t{course_string}"
+
+#     # Public methods
+#     def add_course(self, course: Course):
+#         """Add a course to the program."""
+
+#         if course in self.courses:
+#             logger.warning("Course %s is already in program %s.",
+#                            course.code, self.name)
+#         else:
+#             self.courses.append(course)
+#             logger.info("Added %s to %s.", course.code, self.name)
+
+#     # Private methods
+
+
+class GraphVisualisation:
+    """A graph visualisation class for the course prerequisite chains.
+
+    View prerequisites, corequisites, and exclusionary courses based
+    on the Course class defined elsewhere. This generates a graph for
+    visually checking prerequisites chains.
 
     Attributes:
-        name (str):
-            The name of the enrolment program
-        code (str):
-            The UNSW program code as found on the handbook
-        courses ():
-            The core courses of which this program is comprised. This
-            is optional at initilisation.
+        prerequisites (list[Course]):
+            The list of connected edges between courses. Entries are in
+            the form (a, b) where a is a Course that has a prerequisite
+            of Course b.
     """
 
     # Static class attribute definitions
     # NONE
 
     # Dunders
-    def __init__(self, name: str, code: str, courses: list = None):
-        self.name = name
-        self.code = code
-        self.courses = []
-
-        if courses:
-            for c in courses:
-                self.add_course(c)
-
-    def __str__(self):
-        out_str = f"Program \"{self.name}\" \nwith course code " \
-            + f"{self.code} \nhas the following courses:"
-
-        course_string = "\n\t".join(x.code for x in self.courses)
-
-        return f"{out_str}\n\t{course_string}"
+    def __init__(self) -> None:
+        """Creates a new visualisation mapper for course chains."""
+        self.prerequisites: list[Course] = []
 
     # Public methods
-    def add_course(self, course: Course):
-        """Add a course to the program."""
+    def add_edge_prerequisite(self, a: Course, b: Course) -> None:
+        """Appends a vertex pair to the visual list."""
+        temp = [a, b]
+        self.prerequisites.append(temp)
 
-        if course in self.courses:
-            logger.warning("Course %s is already in program %s.",
-                           course.code, self.name)
-        else:
-            self.courses.append(course)
-            logger.info("Added %s to %s.", course.code, self.name)
+    def visualise(self) -> None:
+        """Opens a visual graph of the verticies."""
+        G = nx.Graph()
+        G.add_edges_from(self.prerequisites)
+        nx.draw_networkx(G)
+        plt.show()
 
     # Private methods
+    # NONE
 
 
 ###################
@@ -293,7 +295,7 @@ class Program:
 # Public functions #
 ####################
 # --- Primary runner functions --- #
-def store_data_to_disk(timetable_link):
+def store_data_to_disk(timetable_link: str) -> list[str]:
     """Get all courses from the timetable website.
 
     Get a list of courses from the timetable website, store their HTML,
@@ -306,32 +308,33 @@ def store_data_to_disk(timetable_link):
     Returns:
         list[str]: A list of urls representing the found courses."""
 
+    logger.info("Starting stage 1: gathering courses.")
+
     timetable_content = query_url(timetable_link)
     courses_listed = get_courses_list_from_timetable(timetable_content)
 
     for course_url in courses_listed:
         # Make a request for that course
-        make_request(course_url)
+        query_url(course_url)
 
     return courses_listed
 
 
 # --- Secondary functions --- #
-def query_url(url, use_cache=True):
+def query_url(url: str, use_cache: bool = True) -> str:
     """Get HTML content for a url from internet or local storage."""
-
     if use_cache:
         # Check if there is a cache
         try:
+            logger.debug("Attempting to open file for url %s", url)
             return open_contents(url)
         except FileNotFoundError:
             logger.info("No cached file for url %s", url)
             return make_request(url)
 
 
-def make_request(url, save_response=True):
+def make_request(url: str, save_response: bool = True) -> str:
     """Make a request to the given URL and return the HTML content."""
-
     logger.info("Making request for %s", url)
     try:
         resp = requests.get(url, timeout=30)
@@ -347,10 +350,8 @@ def make_request(url, save_response=True):
     return resp.text
 
 
-def open_contents(url):
-    """Open the file that maps to the given url and return the
-    contents."""
-
+def open_contents(url: str) -> str:
+    """Get contents from cached results for given URL query."""
     logger.info("Searching for cached response for %s.", url)
 
     domain = urlparse(url)
@@ -368,9 +369,8 @@ def open_contents(url):
         raise FileNotFoundError from exc
 
 
-def save_contents(url, html_content):
+def save_contents(url: str, html_content: str) -> None:
     """Save the given HTML content to a file in a structured manner."""
-
     domain = urlparse(url)
 
     # TODO This has static file locations. Should probs be a global.
@@ -379,26 +379,30 @@ def save_contents(url, html_content):
     # Make sure the path for this file exists
     os.makedirs(os.path.dirname(save_location), exist_ok=True)
 
+    soup = BeautifulSoup(html_content, "html.parser")
+
     with open(save_location, 'w', encoding='utf-8') as f:
         logger.info("Saving content for url %s to disk.", url)
-        f.write(html_content)
+        f.write(soup.prettify())
 
 
-def get_courses_list_from_timetable(content):
+def get_courses_list_from_timetable(content: str) -> list[str]:
     """Get list of urls that point to courses found in given content."""
-
     soup = BeautifulSoup(content, "html.parser")
     table_headers = soup.find_all("td", class_="classSearchSectionHeading")
     identified_courses = []
 
     for th in table_headers:
+        logger.debug("Parsing table headers: %s", th)
         # Remember if this is iterating through postgrad or undergrad courses
         # This depends on there being a visiable line titled "Undergraduate"
         # in the html content - otherwise it will default to postgrad.
         if "Undergraduate" in th.parent.parent.parent.parent.previous_sibling\
                 .previous_sibling.text:
+            logger.debug("Undergrad found.")
             url_course_string = "undergraduate"
         else:
+            logger.debug("No undergrad found. Assuming postgraduate.")
             url_course_string = "postgraduate"
 
         # Find the first table and get all the rows of that table.
@@ -408,8 +412,11 @@ def get_courses_list_from_timetable(content):
         course_entries.pop(0)
 
         for c in course_entries:
+            logger.debug("Parsing course entry: %s", c)
+
             # Skip row spacers
             if c.find("td", class_="rowSpacer"):
+                logger.debug("Entry skipped.")
                 continue
 
             course_code = c.find_all("td")[0].text
@@ -419,24 +426,97 @@ def get_courses_list_from_timetable(content):
                 + course_code
 
             if course_handbook_url not in identified_courses:
+                logger.debug("Adding course %s to list.", course_code)
                 identified_courses.append(course_handbook_url)
+            else:
+                logger.debug("Course %s already found.", course_code)
 
     return identified_courses
 
 
-def get_all_data(content):
+def get_all_data(content: str) -> dict[str, any]:
     """Get the important data out of the given content."""
+    course_data = {}
+    course_data['prerequisites'] = _get_prerequisites(content)
+    course_data['name'] = _get_name_from_content(content)
+    course_data['code'] = _get_code_from_content(content)
+    course_data['is_postgrad'] = _get_postgrad_from_content(content)
 
-    # TODO
+    return course_data
 
 
 #####################
 # Private functions #
 #####################
-def _get_prerequisites(content):
-    """Get prerequisite data out of given HTML content"""
+def _content_to_json(content: str) -> dict[any, any]:
+    """Get the json data out of the HTML response"""
+    soup = BeautifulSoup(content, "html.parser")
+    data_script = soup.find("script", id="__NEXT_DATA__").text
+    logger.debug("Found data script.")
+    return json.loads(data_script)
 
-    # TODO
+
+def _get_prerequisites(content: str) -> list[str]:
+    """Get prerequisite data out of given HTML content"""
+    course_data = _content_to_json(content)
+    try:
+        page_content = course_data['props']['pageProps']['pageContent']
+        prerequisite_info = page_content['enrolment_rules']['description']
+        logger.debug("Successfully parsed enrolment rules.")
+    except TypeError:
+        logger.warning("Could parse enrolment rules."
+                     + "Assuming no conditions of enrolment.")
+        return []
+
+    prerequisites = re.findall(r"COMP\d\d\d\d", prerequisite_info,
+                               re.IGNORECASE)
+    logger.debug("Regex match for courses: %s", prerequisites)
+
+    return prerequisites
+
+
+def _get_name_from_content(content: str) -> str:
+    """Get the course name from the content given by parsing HTML."""
+    course_data = _content_to_json(content)
+    try:
+        page_content = course_data['props']['pageProps']['pageContent']
+        course_name = page_content['title']
+        logger.debug("Successfully parsed course name.")
+        return course_name
+    except TypeError:
+        logger.error("Could not parse course name.")
+        return ""
+
+
+def _get_code_from_content(content: str) -> str:
+    """Get the course code from the content given by parsing HTML."""
+    course_data = _content_to_json(content)
+    try:
+        page_content = course_data['props']['pageProps']['pageContent']
+        course_code = page_content['cl_code']
+        logger.debug("Successfully parsed course code.")
+        return course_code
+    except TypeError:
+        logger.error("Could not parse course code.")
+        return ""
+
+
+def _get_postgrad_from_content(content: str) -> bool:
+    """Get the course code from the content given by parsing HTML."""
+    course_data = _content_to_json(content)
+    try:
+        page_content = course_data['props']['pageProps']['pageContent']
+        course_pgrd = page_content['study_level']['label']
+        logger.debug("Successfully parsed course level.")
+
+        if course_pgrd == "Postgraduate":
+            return True
+        else:
+            return False
+
+    except TypeError:
+        logger.error("Could not parse course level.")
+        return True
 
 
 ###############################################################################
@@ -470,19 +550,26 @@ def main(parsed_args):
         course_html = open_contents(course_url)
         course_data = get_all_data(course_html)
 
-        new_course = Course()
+        new_course = Course(course_data.get('name'),
+                            # TODO Change this to be parsing from html
+                            course_data.get('code'),
+                            course_data.get('is_postgrad'))
 
         # Add the prerequisites to the course class and visualiser
-        for prereq in course_data['prerequisites']:
-            c.add_prereq(prereq)
+        for prereq in course_data.get('prerequisites'):
+            new_course.add_prereq(prereq)
+
+        courses.append(new_course)
+
+    print(courses)
 
     # TODO
     # --- STAGE THREE ---#
     # --- Create a graph from class structures and visualise ---#
-    visualiser = GraphVisualization()
+    visualiser = GraphVisualisation()
 
     # Show the graph
-    visualiser.visualize()
+    visualiser.visualise()
 
 
 ###############################################################################
