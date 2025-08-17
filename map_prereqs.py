@@ -162,10 +162,10 @@ class Course:
         """Add a course as a prerequisite to this course."""
         if course in self.prerequisites:
             logger.warning("Course %s is already a prerequisite for %s.",
-                           course.code, self.name)
+                           course, self.name)
         else:
             self.prerequisites.append(course)
-            logger.info("Added %s as a prerequisite for %s.", course.code,
+            logger.info("Added %s as a prerequisite for %s.", course,
                         self.name)
 
     def add_coreq(self, course: Course) -> None:
@@ -175,17 +175,17 @@ class Course:
                            course.code, self.name)
         else:
             self.corequesites.append(course)
-            logger.info("Added %s as a corequisite for %s.", course.code,
+            logger.info("Added %s as a corequisite for %s.", course,
                         self.name)
 
     def add_exclusion(self, course: Course) -> None:
         """Add a course as an exclusion to this course."""
         if course in self.exclusions:
             logger.warning("Course %s is already an exclusion for %s.",
-                           course.code, self.name)
+                           course, self.name)
         else:
             self.exclusions.append(course)
-            logger.info("Added %s as an exclusion for %s.", course.code,
+            logger.info("Added %s as an exclusion for %s.", course,
                         self.name)
 
     # Private methods
@@ -461,11 +461,16 @@ def _get_prerequisites(content: str) -> list[str]:
     course_data = _content_to_json(content)
     try:
         page_content = course_data['props']['pageProps']['pageContent']
-        prerequisite_info = page_content['enrolment_rules']['description']
+        # TODO: handle the case where the course has multiple rules
+        prerequisite_info = page_content['enrolment_rules'][0]['description']
         logger.debug("Successfully parsed enrolment rules.")
     except TypeError:
-        logger.warning("Could parse enrolment rules."
-                     + "Assuming no conditions of enrolment.")
+        logger.warning("Could not parse enrolment rules. "
+                       + "Assuming no conditions of enrolment.")
+        return []
+    except IndexError:
+        logger.warning("Could not parse enrolment rules. "
+                       + "Assuming no conditions of enrolment.")
         return []
 
     prerequisites = re.findall(r"COMP\d\d\d\d", prerequisite_info,
@@ -506,7 +511,9 @@ def _get_postgrad_from_content(content: str) -> bool:
     course_data = _content_to_json(content)
     try:
         page_content = course_data['props']['pageProps']['pageContent']
-        course_pgrd = page_content['study_level']['label']
+        # TODO: handle the case where the course is offered at multiple
+        # levels
+        course_pgrd = page_content['study_level'][0]['label']
         logger.debug("Successfully parsed course level.")
 
         if course_pgrd == "Postgraduate":
@@ -561,12 +568,13 @@ def main(parsed_args):
 
         courses.append(new_course)
 
-    print(courses)
-
-    # TODO
     # --- STAGE THREE ---#
     # --- Create a graph from class structures and visualise ---#
     visualiser = GraphVisualisation()
+
+    for course in courses:
+        for prereq in course.prerequisites:
+            visualiser.add_edge_prerequisite(course.code, prereq)
 
     # Show the graph
     visualiser.visualise()
