@@ -1,5 +1,21 @@
 #!/usr/bin/env python3
 
+# Docstrings How To:
+# READ THE PEP https://peps.python.org/pep-0257/
+#
+# Overview:
+# https://joshdimella.com/blog/python-docstring-formats-best-practices
+# #sphinxrestructuredtext-style-docstrings
+#
+# # Example for Google formatting:
+# https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html
+# If you're using google format, types need to be indicated in function
+# definitions
+#
+# Example for ReST formatting:
+# https://www.sphinx-doc.org/en/master/usage/index.html
+# This is more flexible. That can be either good or bad.
+
 ###############################################################################
 # Licence Information                                                         #
 ###############################################################################
