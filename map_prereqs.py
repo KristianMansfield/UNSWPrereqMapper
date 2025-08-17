@@ -38,17 +38,34 @@ Typical usage example:
     pipenv run ./map_prereqs.py
 """
 
+# Script information todo list:
+#   This script should have several stages, with each run independently:
+#   * Query network and store information
+#       Gather information from the urls and store the html to disk
+#   * Build a model built on classes
+#       Open the stored information from disk and build the relevant
+#       class structures. Store these classes to disk in an importable
+#       method for usage later
+#   * Visualise the graph
+#       Open a graph so that one can view the prerequisite chains. This
+#       Should also have some visualisation differences to show
+#       corequisites and exclusionary courses
+
 
 ###############################################################################
 # Imports                                                                     #
 ###############################################################################
 import argparse
 import logging
-import requests
 import os
-from bs4 import BeautifulSoup
-from utils.setup_logger import logger
 from urllib.parse import urlparse
+
+import matplotlib.pyplot as plt
+import networkx as nx
+import requests
+from bs4 import BeautifulSoup
+
+from utils.setup_logger import logger
 
 
 ###############################################################################
@@ -57,6 +74,46 @@ from urllib.parse import urlparse
 ##################
 # Public classes #
 ##################
+class GraphVisualization:
+    """A graph visualisation class for the course prerequisite chains.
+
+    View prerequisites, corequisites, and exclusionary courses based
+    on the Course class defined elsewhere. This generates a graph for
+    visually checking prerequisites chains.
+
+    Attributes:
+        prerequisites (:obj:`list` of :obj:`Tuple[Course, Course]`):
+            The list of connected edges between courses. Entries are in
+            the form (a, b) where a is a Course that has a prerequisite
+            of Course b.
+    """
+
+    # Static class attribute definitions
+    # NONE
+
+    # Dunders
+    def __init__(self):
+        self.prerequisites = []
+
+    # Public methods
+    def addEdge(self, a, b):
+        """Appends a vertex pair to the visual list."""
+
+        temp = [a, b]
+        self.prerequisites.append(temp)
+
+    def visualize(self):
+        """Opens a visual graph of the verticies."""
+
+        G = nx.Graph()
+        G.add_edges_from(self.prerequisites)
+        nx.draw_networkx(G)
+        plt.show()
+
+    # Private methods
+    # None
+
+
 class Course:
     """A data structure to store a course.
 
@@ -65,33 +122,37 @@ class Course:
     is for the metadata about the course as a whole.
 
     Attributes:
-        code (int):
-            The unique course code as identified in the handbook.
         name (str):
             The name of the course as described in the handbook.
-        corequisites:
+        code (int):
+            The unique course code as identified in the handbook.
+        postgrad (bool):
+            Whether or not this course is a postgraduate course.
+        corequisites (list[Course], optional):
             Courses that are prerequisites but can be taken alongside
             this course.
-        prerequisites:
+        prerequisites (list[Course], optional):
             Courses that are direct prerequisites before one can take
             this course.
-        exclusions:
+        exclusions (list[Course], optional):
             Courses that have the same content and cannot be taken in
             the same program.
-        other_prerequisites:
+        other_prerequisites (list[str], optional):
             Conditions of enrolment that are not courses.
-        description (str):
+
+    Yet to Implement:
+        description (str, optional):
             A description of the course as taken from the handbook.
-        uoc (int):
+        uoc (int, optional):
             The number of Units of Credit this course represents.
-        offering_faculty (str):
+        offering_faculty (str, optional):
             The faculty offering the course.
-        offering_school (str):
+        offering_school (str, optional):
             The school offering the course.
-        field_of_education (str):
+        field_of_education (str, optional):
             The field of education of the course as taken from the
             handbook.
-        delivery_mode (str):
+        delivery_mode (str, optional):
             The method of delivery for the course - usually in-person
     """
 
@@ -100,13 +161,21 @@ class Course:
 
     # Dunders
     # TODO Make arguments a dict
-    def __init__(self, name, code, prerequisites=None,
+    def __init__(self, name, code, postgrad=False, prerequisites=None,
                  corequisites=None, exclusions=None):
         self.code = code
         self.name = name
         self.prerequisites = []
         self.corequesites = []
         self.exclusions = []
+
+        if postgrad:
+            # TODO How do you get strings to adhere to the 79 char style guide?
+            self.handbook_url = "https://www.handbook.unsw.edu.au/" \
+                + "postgraduate/courses/2025/" + code
+        else:
+            self.handbook_url = "https://www.handbook.unsw.edu.au" \
+                + "undergraduate/courses/2025/" + code
 
         if prerequisites:
             for course in prerequisites:
@@ -223,6 +292,31 @@ class Program:
 ####################
 # Public functions #
 ####################
+# --- Primary runner functions --- #
+def store_data_to_disk(timetable_link):
+    """Get all courses from the timetable website.
+
+    Get a list of courses from the timetable website, store their HTML,
+    and return the list of courses as a list of URLs.
+
+    Parameters:
+        timetable_link (str):
+            A url to the timetable page.
+
+    Returns:
+        list[str]: A list of urls representing the found courses."""
+
+    timetable_content = query_url(timetable_link)
+    courses_listed = get_courses_list_from_timetable(timetable_content)
+
+    for course_url in courses_listed:
+        # Make a request for that course
+        make_request(course_url)
+
+    return courses_listed
+
+
+# --- Secondary functions --- #
 def query_url(url, use_cache=True):
     """Get HTML content for a url from internet or local storage."""
 
@@ -260,6 +354,8 @@ def open_contents(url):
     logger.info("Searching for cached response for %s.", url)
 
     domain = urlparse(url)
+
+    # This has static file locations. Should probs be a global.
     file_location = "sites/" + domain.netloc + "/" + domain.path + ".html"
 
     try:
@@ -272,10 +368,12 @@ def open_contents(url):
         raise FileNotFoundError from exc
 
 
-def save_contents(url, html_content):   # TODO
+def save_contents(url, html_content):
     """Save the given HTML content to a file in a structured manner."""
 
     domain = urlparse(url)
+
+    # TODO This has static file locations. Should probs be a global.
     save_location = "sites/" + domain.netloc + "/" + domain.path + ".html"
 
     # Make sure the path for this file exists
@@ -286,17 +384,24 @@ def save_contents(url, html_content):   # TODO
         f.write(html_content)
 
 
-def get_courses(content):
-    """Get the list of courses out of the given content."""
-
-    # ug_courses = []
-    # pg_courses = []
-    courses = []
+def get_courses_list_from_timetable(content):
+    """Get list of urls that point to courses found in given content."""
 
     soup = BeautifulSoup(content, "html.parser")
     table_headers = soup.find_all("td", class_="classSearchSectionHeading")
+    identified_courses = []
 
     for th in table_headers:
+        # Remember if this is iterating through postgrad or undergrad courses
+        # This depends on there being a visiable line titled "Undergraduate"
+        # in the html content - otherwise it will default to postgrad.
+        if "Undergraduate" in th.parent.parent.parent.parent.previous_sibling\
+                .previous_sibling.text:
+            url_course_string = "undergraduate"
+        else:
+            url_course_string = "postgraduate"
+
+        # Find the first table and get all the rows of that table.
         course_entries = th.parent.parent.find("table").find_all("tr")
 
         # Remove the first entry as this is a header row
@@ -308,11 +413,15 @@ def get_courses(content):
                 continue
 
             course_code = c.find_all("td")[0].text
+            course_handbook_url = "https://www.handbook.unsw.edu.au/" \
+                + url_course_string \
+                + "/courses/2025/" \
+                + course_code
 
-            if course_code not in courses:
-                courses.append(course_code)
+            if course_handbook_url not in identified_courses:
+                identified_courses.append(course_handbook_url)
 
-    return courses
+    return identified_courses
 
 
 def get_all_data(content):
@@ -337,7 +446,7 @@ def main(parsed_args):
     """Main function for python module"""
 
     # -----------------
-    # Declare variables
+    # Setup
     # -----------------
     timetable_link = ''.join(["https://timetable.unsw.edu.au/",
                               parsed_args.year,
@@ -346,26 +455,34 @@ def main(parsed_args):
                               parsed_args.campus,
                               ".html"
                               ])
-    # https://www.handbook.unsw.edu.au/undergraduate/courses/2025/COMP6441
-
-    # -----------------
-    # Setup
-    # -----------------
 
     # -----------------
     # Run :)
     # -----------------
-    if not parsed_args.offline:
-        timetable_content = query_url(timetable_link)
-        courses_listed = get_courses(timetable_content)
-        print(len(courses_listed))
-        print(courses_listed)
+    # --- STAGE ONE ---#
+    # --- Query the network and store information to disk ---#
+    courses_found = store_data_to_disk(timetable_link)
 
-    else:
-        term_string = "Offline mode is not yet supported for this script."
-        print(term_string)
-        logger.error(term_string)
-        exit()
+    # --- STAGE TWO ---#
+    # --- Open content from disk and create class structures ---#
+    courses = []
+    for course_url in courses_found:
+        course_html = open_contents(course_url)
+        course_data = get_all_data(course_html)
+
+        new_course = Course()
+
+        # Add the prerequisites to the course class and visualiser
+        for prereq in course_data['prerequisites']:
+            c.add_prereq(prereq)
+
+    # TODO
+    # --- STAGE THREE ---#
+    # --- Create a graph from class structures and visualise ---#
+    visualiser = GraphVisualization()
+
+    # Show the graph
+    visualiser.visualize()
 
 
 ###############################################################################
