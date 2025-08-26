@@ -281,7 +281,11 @@ class GraphVisualisation:
         """Opens a visual graph of the verticies."""
         G = nx.DiGraph()
         G.add_edges_from(self.prerequisites)
-        nx.draw_networkx(G)
+        nx.draw_networkx(G, with_labels=True)           # Default
+        # nx.draw_circular(G, with_labels=True)         # Usable
+        # nx.draw_kamada_kawai(G, with_labels=True)     # Usable
+        # nx.draw_spring(G, with_labels=True)           # Clustered
+        # nx.draw_shell(G, with_labels=True)            # Circular
         plt.show()
 
     # Private methods
