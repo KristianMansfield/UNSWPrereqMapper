@@ -53,6 +53,10 @@ TODO:
     * Write more documentation. Adhere to the PEP257 regarding using the
     docstring as the usage output of the scripts invocation.
     * Put the type inference on all function definitions.
+    * Make the output graph directed.
+    * Catch instances where you can do a course OR another course as a
+    prerequisite.
+    * Add support for exclusionary and corequisite courses.
 """
 
 
@@ -256,6 +260,9 @@ class GraphVisualisation:
             The list of connected edges between courses. Entries are in
             the form (a, b) where a is a Course that has a prerequisite
             of Course b.
+
+    TODO:
+        At the moment the graph is not directed.
     """
 
     # Static class attribute definitions
@@ -270,11 +277,12 @@ class GraphVisualisation:
     def add_edge_prerequisite(self, a: Course, b: Course) -> None:
         """Appends a vertex pair to the visual list."""
         temp = [a, b]
+        # temp = [b, a]
         self.prerequisites.append(temp)
 
     def visualise(self) -> None:
         """Opens a visual graph of the verticies."""
-        G = nx.Graph()
+        G = nx.DiGraph()
         G.add_edges_from(self.prerequisites)
         nx.draw_networkx(G)
         plt.show()
@@ -440,9 +448,43 @@ def get_all_data(content: str) -> dict[str, any]:
     course_data['prerequisites'] = _get_prerequisites(content)
     course_data['name'] = _get_name_from_content(content)
     course_data['code'] = _get_code_from_content(content)
-    course_data['is_postgrad'] = _get_postgrad_from_content(content)
+    course_data['is_postgrad'] = _get_is_postgrad_from_content(content)
+    course_data['exclusions'] = _get_exclusions_from_content(content)
 
     return course_data
+
+
+def merge_courses(courses: list[Course]) -> dict[str, str]:
+    """Combine courses that are exclusions into one reference"""
+    merged_courses = {}
+
+    # Every course has some exclusions
+    # These exclusions will teach the same content as this course
+    # So for each course, find the course with the smallest course code
+    # That becomes the value for this course
+    for course in courses:
+        smallest_course_code = course.code  # The default
+        for exclusion in course.exclusions:
+            if exclusion < course.code:
+                smallest_course_code = exclusion
+        for exclusion in course.exclusions:
+            if exclusion not in merged_courses \
+                    or merged_courses.get(exclusion) > smallest_course_code:
+
+                merged_courses[exclusion] = smallest_course_code
+
+        merged_courses[course.code] = smallest_course_code
+
+    # Once all courses are processed, we should update each course
+    # to the lowest value
+    for course in courses:
+        index_course = course.code
+        while merged_courses.get(index_course) != index_course:
+            index_course = merged_courses.get(index_course)
+
+        merged_courses[course.code] = index_course
+
+    return merged_courses
 
 
 #####################
@@ -473,6 +515,7 @@ def _get_prerequisites(content: str) -> list[str]:
                        + "Assuming no conditions of enrolment.")
         return []
 
+    # TODO Change this to match all course codes
     prerequisites = re.findall(r"COMP\d\d\d\d", prerequisite_info,
                                re.IGNORECASE)
     logger.debug("Regex match for courses: %s", prerequisites)
@@ -506,7 +549,7 @@ def _get_code_from_content(content: str) -> str:
         return ""
 
 
-def _get_postgrad_from_content(content: str) -> bool:
+def _get_is_postgrad_from_content(content: str) -> bool:
     """Get the course code from the content given by parsing HTML."""
     course_data = _content_to_json(content)
     try:
@@ -524,6 +567,27 @@ def _get_postgrad_from_content(content: str) -> bool:
     except TypeError:
         logger.error("Could not parse course level.")
         return True
+
+
+def _get_exclusions_from_content(content: str) -> list[str]:
+    """Get the exclusion courses from the content."""
+    course_data = _content_to_json(content)
+
+    exclusions = []
+    try:
+        page_content = course_data['props']['pageProps']['pageContent']
+        json_exclusions = page_content['exclusion']
+        logger.debug("Successfully parsed course exclusions.")
+
+        for course_json in json_exclusions:
+            course_code = course_json['assoc_code']
+            exclusions.append(course_code)
+
+    except TypeError:
+        logger.error("Could not parse course exclusions.")
+        return True
+
+    return exclusions
 
 
 ###############################################################################
@@ -566,15 +630,40 @@ def main(parsed_args):
         for prereq in course_data.get('prerequisites'):
             new_course.add_prereq(prereq)
 
+        # Add the exclusions to the course class and visualiser
+        for exclusion in course_data.get('exclusions'):
+            new_course.add_exclusion(exclusion)
+
         courses.append(new_course)
 
     # --- STAGE THREE ---#
     # --- Create a graph from class structures and visualise ---#
     visualiser = GraphVisualisation()
 
+    merged_courses = merge_courses(courses)
+    edges = []
+
     for course in courses:
+        index_course_code = merged_courses.get(course.code)
+
+        logger.info("Adding %s to visualiser", course.code)
+        logger.debug("Value for course %s is %s", course.code,
+                     index_course_code)
+
         for prereq in course.prerequisites:
-            visualiser.add_edge_prerequisite(course.code, prereq)
+            logger.debug("Adding edge between %s(%s) and %s(%s)",
+                         course.code,
+                         index_course_code,
+                         prereq,
+                         merged_courses.get(prereq))
+            edges.append((index_course_code,
+                         merged_courses.get(
+                             prereq,
+                             prereq)))
+            visualiser.add_edge_prerequisite(index_course_code,
+                                             merged_courses.get(
+                                                 prereq,
+                                                 prereq))
 
     # Show the graph
     visualiser.visualise()
