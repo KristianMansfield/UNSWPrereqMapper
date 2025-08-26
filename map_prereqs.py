@@ -260,9 +260,6 @@ class GraphVisualisation:
             The list of connected edges between courses. Entries are in
             the form (a, b) where a is a Course that has a prerequisite
             of Course b.
-
-    TODO:
-        At the moment the graph is not directed.
     """
 
     # Static class attribute definitions
